@@ -1,0 +1,162 @@
+diff --git a/include/aircrack-ng/support/station.h b/include/aircrack-ng/support/station.h
+index b94b8c27..6feb8eac 100644
+--- a/include/aircrack-ng/support/station.h
++++ b/include/aircrack-ng/support/station.h
+@@ -171,6 +171,8 @@ struct AP_info
+ 
+ 	// This feature eats 48Mb per AP
+ 	int EAP_detected;
++	unsigned char eap_outer[32]; /* 256-bit mask of EAP outer types seen
++									(13=TLS 21=TTLS 25=PEAP 55=TEAP etc.) */
+ 	uint8_t * data_root; /* first 2 bytes of data if */
+ 	/* WEP network; used for    */
+ 	/* detecting WEP cloak	  */
+diff --git a/src/airodump-ng/airodump-ng.c b/src/airodump-ng/airodump-ng.c
+index d209d04f..ecc4e184 100644
+--- a/src/airodump-ng/airodump-ng.c
++++ b/src/airodump-ng/airodump-ng.c
+@@ -128,6 +128,49 @@ static volatile time_t quitting_event_ts = 0;
+ 
+ static void dump_sort(void);
+ static void dump_print(int ws_row, int ws_col, int if_num);
++
++/* Short EAP outer-method tag for the AUTH column. mask = 256-bit map.
++ * Returns pointer to static buffer, e.g. "MGT+TEAP", "MGT+PEAP",
++ * "MGT+TLS", "MGT+2types", or "MGT" when nothing seen yet. */
++static const char * eap_outer_tag(const unsigned char * mask)
++{
++	static char buf[32];
++	int tls = (mask[13 >> 3] >> (13 & 7)) & 1;
++	int ttls = (mask[21 >> 3] >> (21 & 7)) & 1;
++	int peap = (mask[25 >> 3] >> (25 & 7)) & 1;
++	int teap = (mask[55 >> 3] >> (55 & 7)) & 1;
++	int n = tls + ttls + peap + teap;
++	if (n == 0)
++	{
++		for (int i = 0; i < 32; ++i)
++			if (mask[i])
++			{
++				snprintf(buf, sizeof(buf), "MGT+EAP");
++				return buf;
++			}
++		snprintf(buf, sizeof(buf), "MGT");
++		return buf;
++	}
++	if (n == 1)
++	{
++		if (teap) snprintf(buf, sizeof(buf), "MGT+TEAP");
++		else if (peap) snprintf(buf, sizeof(buf), "MGT+PEAP");
++		else if (ttls) snprintf(buf, sizeof(buf), "MGT+TTLS");
++		else snprintf(buf, sizeof(buf), "MGT+TLS");
++		return buf;
++	}
++	if (n == 2)
++	{
++		if (teap && peap) snprintf(buf, sizeof(buf), "MGT+T/P");
++		else if (teap && tls) snprintf(buf, sizeof(buf), "MGT+T/TLS");
++		else if (peap && ttls) snprintf(buf, sizeof(buf), "MGT+P/TTLS");
++		else snprintf(buf, sizeof(buf), "MGT+2types");
++		return buf;
++	}
++	snprintf(buf, sizeof(buf), "MGT+%dtypes", n);
++	return buf;
++}
++
+ static char *
+ get_manufacturer(unsigned char mac0, unsigned char mac1, unsigned char mac2);
+ int is_filtered_essid(const uint8_t * essid);
+@@ -1475,6 +1518,7 @@ static int dump_add_packet(unsigned char * h80211,
+ 
+ 		ap_cur->data_root = NULL;
+ 		ap_cur->EAP_detected = 0;
++		memset(ap_cur->eap_outer, 0, sizeof(ap_cur->eap_outer));
+ 		memcpy(ap_cur->gps_loc_min, lopt.gps_loc, sizeof(float) * 5); //-V512
+ 		memcpy(ap_cur->gps_loc_max, lopt.gps_loc, sizeof(float) * 5); //-V512
+ 		memcpy(ap_cur->gps_loc_best, lopt.gps_loc, sizeof(float) * 5); //-V512
+@@ -2755,6 +2799,40 @@ skip_probe:
+ 
+ 			z += 2; // skip ethertype
+ 
++			/* --- EAP outer-method census (EAPOL type 0 = EAP-Packet) ---
++			 * EAPOL hdr: ver(1) type(1) len(2); EAP: code(1) id(1) len(2)
++			 * type(1). NAK(3) payload lists offered types. Bounds-checked;
++			 * silent on truncation. */
++			if ((int) z + 4 <= caplen && h80211[z + 1] == 0x00)
++			{
++				int eapol_len = (h80211[z + 2] << 8) | h80211[z + 3];
++				int eo = (int) z + 4; // EAP start
++				if (eapol_len >= 4 && eo + 4 <= caplen
++					&& eo + eapol_len <= caplen)
++				{
++					unsigned eap_code = h80211[eo];
++					int eap_len = (h80211[eo + 2] << 8) | h80211[eo + 3];
++					if ((eap_code == 0x01 || eap_code == 0x02) && eap_len >= 5
++						&& eap_len <= eapol_len)
++					{
++						unsigned etype = h80211[eo + 4];
++						if (etype == 0x03) // NAK: payload = offered types
++						{
++							for (int k = eo + 5; k < eo + eap_len; ++k)
++							{
++								unsigned t = h80211[k];
++								ap_cur->eap_outer[t >> 3] |= (1u << (t & 7));
++							}
++						}
++						else
++						{
++							ap_cur->eap_outer[etype >> 3]
++								|= (1u << (etype & 7));
++						}
++					}
++				}
++			}
++
+ 			if (st_cur == NULL) goto write_packet;
+ 
+ 			/* frame 1: Pairwise == 1, Install == 0, Ack == 1, MIC == 0 */
+@@ -3757,7 +3835,7 @@ static void dump_print(int ws_row, int ws_col, int if_num)
+ 			strlcat(strbuf, "RXQ ", sizeof(strbuf));
+ 
+ 		strlcat(strbuf,
+-				" Beacons    #Data, #/s  CH   MB   ENC CIPHER  AUTH ",
++				" Beacons    #Data, #/s  CH   MB   ENC CIPHER  AUTH-EAP ",
+ 				sizeof(strbuf));
+ 
+ 		if (lopt.show_uptime)
+@@ -3995,7 +4073,10 @@ static void dump_print(int ws_row, int ws_col, int if_num)
+ 				if (ap_cur->security & AUTH_SAE)
+ 					snprintf(strbuf + len, sizeof(strbuf) - len, "SAE ");
+ 				else if (ap_cur->security & AUTH_MGT)
+-					snprintf(strbuf + len, sizeof(strbuf) - len, "MGT ");
++					snprintf(strbuf + len,
++							 sizeof(strbuf) - len,
++							 "%-8s",
++							 eap_outer_tag(ap_cur->eap_outer));
+ 				else if (ap_cur->security & AUTH_CMAC)
+ 					snprintf(strbuf + len, sizeof(strbuf) - len, "CMAC");
+ 				else if (ap_cur->security & AUTH_PSK)
+diff --git a/src/airodump-ng/dump_write.c b/src/airodump-ng/dump_write.c
+index 4efd0eed..e69625e1 100644
+--- a/src/airodump-ng/dump_write.c
++++ b/src/airodump-ng/dump_write.c
+@@ -242,7 +242,19 @@ int dump_write_csv(struct AP_info * ap_1st,
+ 		else
+ 		{
+ 			if (ap_cur->security & AUTH_SAE) fprintf(opt.f_txt, " SAE");
+-			if (ap_cur->security & AUTH_MGT) fprintf(opt.f_txt, " MGT");
++			if (ap_cur->security & AUTH_MGT)
++			{
++				fprintf(opt.f_txt, " MGT");
++				/* observed outer EAP methods: TLS(13) TTLS(21) PEAP(25) TEAP(55) */
++				if ((ap_cur->eap_outer[13 >> 3] >> (13 & 7)) & 1)
++					fprintf(opt.f_txt, "+TLS");
++				if ((ap_cur->eap_outer[21 >> 3] >> (21 & 7)) & 1)
++					fprintf(opt.f_txt, "+TTLS");
++				if ((ap_cur->eap_outer[25 >> 3] >> (25 & 7)) & 1)
++					fprintf(opt.f_txt, "+PEAP");
++				if ((ap_cur->eap_outer[55 >> 3] >> (55 & 7)) & 1)
++					fprintf(opt.f_txt, "+TEAP");
++			}
+ 			if (ap_cur->security & AUTH_CMAC) fprintf(opt.f_txt, " CMAC");
+ 			if (ap_cur->security & AUTH_PSK)
+ 			{
