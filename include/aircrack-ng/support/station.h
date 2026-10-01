@@ -171,6 +171,8 @@ struct AP_info
 
 	// This feature eats 48Mb per AP
 	int EAP_detected;
+	unsigned char eap_outer[32]; /* 256-bit mask of EAP outer types seen
+									(13=TLS 21=TTLS 25=PEAP 55=TEAP etc.) */
 	uint8_t * data_root; /* first 2 bytes of data if */
 	/* WEP network; used for    */
 	/* detecting WEP cloak	  */

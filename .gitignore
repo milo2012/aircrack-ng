@@ -134,3 +134,24 @@ package.json
 package-lock.json
 scripts/**/*.egg-info/*
 **/*-py3*.egg
+
+# Compiled binaries (root) - keep excluded
+/aircrack-ng
+/airdecap-ng
+/airdecloak-ng
+/airodump-ng
+/aireplay-ng
+/airtun-ng
+/airserv-ng
+/besside-ng
+/besside-ng-crawler
+/buddy-ng
+/easside-ng
+/ivstools
+/kstats
+/makeivs-ng
+/packetforge-ng
+/tkiptun-ng
+/wesside-ng
+/wpaclean
+/airventriloquist-ng

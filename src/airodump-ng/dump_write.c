@@ -242,7 +242,19 @@ int dump_write_csv(struct AP_info * ap_1st,
 		else
 		{
 			if (ap_cur->security & AUTH_SAE) fprintf(opt.f_txt, " SAE");
-			if (ap_cur->security & AUTH_MGT) fprintf(opt.f_txt, " MGT");
+			if (ap_cur->security & AUTH_MGT)
+			{
+				fprintf(opt.f_txt, " MGT");
+				/* observed outer EAP methods: TLS(13) TTLS(21) PEAP(25) TEAP(55) */
+				if ((ap_cur->eap_outer[13 >> 3] >> (13 & 7)) & 1)
+					fprintf(opt.f_txt, "+TLS");
+				if ((ap_cur->eap_outer[21 >> 3] >> (21 & 7)) & 1)
+					fprintf(opt.f_txt, "+TTLS");
+				if ((ap_cur->eap_outer[25 >> 3] >> (25 & 7)) & 1)
+					fprintf(opt.f_txt, "+PEAP");
+				if ((ap_cur->eap_outer[55 >> 3] >> (55 & 7)) & 1)
+					fprintf(opt.f_txt, "+TEAP");
+			}
 			if (ap_cur->security & AUTH_CMAC) fprintf(opt.f_txt, " CMAC");
 			if (ap_cur->security & AUTH_PSK)
 			{
