@@ -34,12 +34,13 @@ After a TEAP client session — `MGT+TEAP`:
 | `MGT+TLS`  | Outer EAP-TLS (type 13) observed     | hostapd-mana (`mana_eaptls`) + portal if fleet validation is lax/clickable |
 | `MGT+PEAP` | Outer PEAP (type 25) observed        | eaphammer hash capture (MSCHAPv2/GTC inners); portal only post-crack |
 | `MGT+TTLS` | Outer TTLS (type 21) observed        | eaphammer hash capture, same as PEAP        |
-| `MGT+TEAP` | Outer TEAP (type 55) observed        | - |
+| `MGT+TEAP` | Outer TEAP (type 55) observed        | Custom twin (`teap-twin rogue-auto`); expect MSCHAPv2 hashes or dual-TLS |
 | `MGT+EAP`  | Some other EAP type (MD5/GTC/…)      | Check CSV / capture; likely password-based, eaphammer candidate |
 | `MGT+T/P`  | TEAP + PEAP clients on one SSID      | Mixed fleet — run both tool paths           |
 | `MGT+T/TLS`| TEAP + EAP-TLS clients               | Mixed fleet — cert path (mana) + TEAP path  |
 | `MGT+P/TTLS`| PEAP + TTLS clients                 | eaphammer covers both                       |
-| `MGT+2types` | Two outer methods, other combo     | Mixed fleet                                 |
+| `MGT+TLS/P` | EAP-TLS + PEAP clients              | Mixed fleet — cert path (mana) + eaphammer  |
+| `MGT+2types` | Two outer methods, other combo (TLS+TTLS, TTLS+TEAP) | Mixed fleet — CSV names the exact pair |
 | `MGT+3types` / `MGT+4types` | Three/four outer methods | Heterogeneous fleet, target per client  |
 
 Console shows the compact tag above. CSV/TXT output instead appends each

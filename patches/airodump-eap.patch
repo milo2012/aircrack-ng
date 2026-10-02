@@ -12,17 +12,19 @@ index b94b8c27..6feb8eac 100644
  	/* WEP network; used for    */
  	/* detecting WEP cloak	  */
 diff --git a/src/airodump-ng/airodump-ng.c b/src/airodump-ng/airodump-ng.c
-index d209d04f..ecc4e184 100644
+index d209d04f..15ff6ff5 100644
 --- a/src/airodump-ng/airodump-ng.c
 +++ b/src/airodump-ng/airodump-ng.c
-@@ -128,6 +128,49 @@ static volatile time_t quitting_event_ts = 0;
+@@ -128,6 +128,52 @@ static volatile time_t quitting_event_ts = 0;
  
  static void dump_sort(void);
  static void dump_print(int ws_row, int ws_col, int if_num);
 +
 +/* Short EAP outer-method tag for the AUTH column. mask = 256-bit map.
 + * Returns pointer to static buffer, e.g. "MGT+TEAP", "MGT+PEAP",
-+ * "MGT+TLS", "MGT+2types", or "MGT" when nothing seen yet. */
++ * "MGT+TLS", "MGT+T/P" (TEAP+PEAP), "MGT+TLS/P", "MGT+2types",
++ * or "MGT" when nothing seen yet. Longest tag is 10 chars
++ * ("MGT+P/TTLS", "MGT+Ntypes") — keep the AUTH column width in sync. */
 +static const char * eap_outer_tag(const unsigned char * mask)
 +{
 +	static char buf[32];
@@ -55,6 +57,7 @@ index d209d04f..ecc4e184 100644
 +		if (teap && peap) snprintf(buf, sizeof(buf), "MGT+T/P");
 +		else if (teap && tls) snprintf(buf, sizeof(buf), "MGT+T/TLS");
 +		else if (peap && ttls) snprintf(buf, sizeof(buf), "MGT+P/TTLS");
++		else if (tls && peap) snprintf(buf, sizeof(buf), "MGT+TLS/P");
 +		else snprintf(buf, sizeof(buf), "MGT+2types");
 +		return buf;
 +	}
@@ -65,7 +68,7 @@ index d209d04f..ecc4e184 100644
  static char *
  get_manufacturer(unsigned char mac0, unsigned char mac1, unsigned char mac2);
  int is_filtered_essid(const uint8_t * essid);
-@@ -1475,6 +1518,7 @@ static int dump_add_packet(unsigned char * h80211,
+@@ -1475,6 +1521,7 @@ static int dump_add_packet(unsigned char * h80211,
  
  		ap_cur->data_root = NULL;
  		ap_cur->EAP_detected = 0;
@@ -73,7 +76,7 @@ index d209d04f..ecc4e184 100644
  		memcpy(ap_cur->gps_loc_min, lopt.gps_loc, sizeof(float) * 5); //-V512
  		memcpy(ap_cur->gps_loc_max, lopt.gps_loc, sizeof(float) * 5); //-V512
  		memcpy(ap_cur->gps_loc_best, lopt.gps_loc, sizeof(float) * 5); //-V512
-@@ -2755,6 +2799,40 @@ skip_probe:
+@@ -2755,6 +2802,40 @@ skip_probe:
  
  			z += 2; // skip ethertype
  
@@ -114,23 +117,23 @@ index d209d04f..ecc4e184 100644
  			if (st_cur == NULL) goto write_packet;
  
  			/* frame 1: Pairwise == 1, Install == 0, Ack == 1, MIC == 0 */
-@@ -3757,7 +3835,7 @@ static void dump_print(int ws_row, int ws_col, int if_num)
+@@ -3757,7 +3838,7 @@ static void dump_print(int ws_row, int ws_col, int if_num)
  			strlcat(strbuf, "RXQ ", sizeof(strbuf));
  
  		strlcat(strbuf,
 -				" Beacons    #Data, #/s  CH   MB   ENC CIPHER  AUTH ",
-+				" Beacons    #Data, #/s  CH   MB   ENC CIPHER  AUTH-EAP ",
++				" Beacons    #Data, #/s  CH   MB   ENC CIPHER  AUTH-EAP   ",
  				sizeof(strbuf));
  
  		if (lopt.show_uptime)
-@@ -3995,7 +4073,10 @@ static void dump_print(int ws_row, int ws_col, int if_num)
+@@ -3995,7 +4076,10 @@ static void dump_print(int ws_row, int ws_col, int if_num)
  				if (ap_cur->security & AUTH_SAE)
  					snprintf(strbuf + len, sizeof(strbuf) - len, "SAE ");
  				else if (ap_cur->security & AUTH_MGT)
 -					snprintf(strbuf + len, sizeof(strbuf) - len, "MGT ");
 +					snprintf(strbuf + len,
 +							 sizeof(strbuf) - len,
-+							 "%-8s",
++							 "%-10s",
 +							 eap_outer_tag(ap_cur->eap_outer));
  				else if (ap_cur->security & AUTH_CMAC)
  					snprintf(strbuf + len, sizeof(strbuf) - len, "CMAC");

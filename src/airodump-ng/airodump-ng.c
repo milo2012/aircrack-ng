@@ -131,7 +131,9 @@ static void dump_print(int ws_row, int ws_col, int if_num);
 
 /* Short EAP outer-method tag for the AUTH column. mask = 256-bit map.
  * Returns pointer to static buffer, e.g. "MGT+TEAP", "MGT+PEAP",
- * "MGT+TLS", "MGT+2types", or "MGT" when nothing seen yet. */
+ * "MGT+TLS", "MGT+T/P" (TEAP+PEAP), "MGT+TLS/P", "MGT+2types",
+ * or "MGT" when nothing seen yet. Longest tag is 10 chars
+ * ("MGT+P/TTLS", "MGT+Ntypes") — keep the AUTH column width in sync. */
 static const char * eap_outer_tag(const unsigned char * mask)
 {
 	static char buf[32];
@@ -164,6 +166,7 @@ static const char * eap_outer_tag(const unsigned char * mask)
 		if (teap && peap) snprintf(buf, sizeof(buf), "MGT+T/P");
 		else if (teap && tls) snprintf(buf, sizeof(buf), "MGT+T/TLS");
 		else if (peap && ttls) snprintf(buf, sizeof(buf), "MGT+P/TTLS");
+		else if (tls && peap) snprintf(buf, sizeof(buf), "MGT+TLS/P");
 		else snprintf(buf, sizeof(buf), "MGT+2types");
 		return buf;
 	}
@@ -3835,7 +3838,7 @@ static void dump_print(int ws_row, int ws_col, int if_num)
 			strlcat(strbuf, "RXQ ", sizeof(strbuf));
 
 		strlcat(strbuf,
-				" Beacons    #Data, #/s  CH   MB   ENC CIPHER  AUTH-EAP ",
+				" Beacons    #Data, #/s  CH   MB   ENC CIPHER  AUTH-EAP   ",
 				sizeof(strbuf));
 
 		if (lopt.show_uptime)
@@ -4075,7 +4078,7 @@ static void dump_print(int ws_row, int ws_col, int if_num)
 				else if (ap_cur->security & AUTH_MGT)
 					snprintf(strbuf + len,
 							 sizeof(strbuf) - len,
-							 "%-8s",
+							 "%-10s",
 							 eap_outer_tag(ap_cur->eap_outer));
 				else if (ap_cur->security & AUTH_CMAC)
 					snprintf(strbuf + len, sizeof(strbuf) - len, "CMAC");
